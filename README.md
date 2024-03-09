@@ -31,9 +31,9 @@ Reads GA Paramaters and initalizes the GA, sets things into motion.
 ```
 public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
 {
-        serializer.SerializeValue(ref indexA);
-        serializer.SerializeValue(ref fitness);
-        serializer.SerializeValue(ref status);
+        serializer.SerializeValue(ref staticVarA);
+        serializer.SerializeValue(ref staticVarB);
+        serializer.SerializeValue(ref staticVarC);
 }
     /*a. Make sure to serial sinc all variables and be very careful with nonstaticly allocated elements*/
 ```
