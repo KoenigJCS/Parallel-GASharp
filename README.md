@@ -28,7 +28,7 @@ Reads GA Paramaters and initalizes the GA, sets things into motion.
 5. Once Complete handing out tasks the host waits for all fitnesses to be returned to it/timeout.
 6. CHC Crossover and repeat
 
-Asside: Client-rpc calls are generally broadcast to all clients, but can be specified to only go to one if the ID is added in the call
+PS: Client-rpc calls are generally broadcast to all clients, but can be specified to only go to one if the ID is added in the call
 **ON MONDAY ADD MORE CODE SNIPPETS**
 
 ### Implementation Details
