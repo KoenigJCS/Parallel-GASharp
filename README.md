@@ -29,7 +29,26 @@ Reads GA Paramaters and initalizes the GA, sets things into motion.
 6. CHC Crossover and repeat
 
 PS: Client-rpc calls are generally broadcast to all clients, but can be specified to only go to one if the ID is added in the call
-**ON MONDAY ADD MORE CODE SNIPPETS**
+![Diagram of Client-RPC](https://docs-multiplayer.unity3d.com/img//sequence_diagrams/RPCs/ClientRPCs_CertainClients.png?text=LightMode)
+```
+SubPopulationProcessor waitingProcessor = InputHandler.inst.inactiveProcessors.Dequeue();
+
+ClientRpcParams clientRpcParams = new ClientRpcParams
+{
+        Send = new ClientRpcSendParams
+        {
+            TargetClientIds = new ulong[]{waitingProcessor.myID.Value}
+        }
+};
+ToHostMessage temp = new(members[i].chromosome,i);
+waitingProcessor.RunProcessorClientRpc(temp,clientRpcParams);
+```
+![Diagram of Server-RPC](https://docs-multiplayer.unity3d.com/img//sequence_diagrams/RPCs/ServerRPCs_ClientHosts_CalledByClient.png?text=LightMode)
+```
+//Inside of Sub-Processor Client RPC
+ToServerMessage toServer = new(fitness,toHostMessage.indexA,1);
+ReadFitnessServerRpc(toServer);
+```
 
 ### Implementation Details
 1. All structs passed through rpcs messages must be an implementation of the INetworkSerializable interface with the method:
