@@ -1,80 +1,52 @@
-# Parallel Genetic Algorithm
+# Cuda Genetic Algorithms
 ## Table of Contents
 1. GA
-2. Population
-3. SubPopulationProcessor
-4. Input Manager
-5. Conceptual Idea
-6. Setup
-7. Additional Notes
+2. Conceptual Idea
+3. Setup
+4. Additional Notes
 
 ### GA
-The GA functions largely the same as a normal GA, although it is initalized as a Unity Monobehavior so that it can have two Population Monobehaviors as children. The GA currently uses CHC Crossover
-
-### Population
-The population is stored as an object inside of the GA so that it can issue RPC jobs to client nodes from the server node. (Node that Host serves as both client and server). The list of induviduals is interated through on a coroutine and passed as a struct containing the chromosme and index to any subpopulation that is currently inactive. Once all induvidual jobs are asigned it yeild waits in intervals of .1s for the remaining jobs to finish on client nodes, it will also timeout after 30s and continue if there is a connection failure.
-
-### Sub-Population Processor
-Any time a client connects to the server a player object is made for it with two scripts, PlayerController is just debug, but SPP(Sub-Population Processor) serves as the container for the evaluation job. An inactive SPP is passed a struct containing the induvidual to evaluate and applies that.
-
-### Input Manager
-Reads GA Paramaters and initalizes the GA, sets things into motion. 
+The GA functions largely the same as a normal GA, although an individual is implemented as a struct instead of a class for reasons seen later.
+The primary changer is the usage of NVIDA cuda to take advantage of GPU processing which can solve much more fitness equations in parallel than the CPU.
+![GPU Diagram](https://docs.nvidia.com/cuda/cuda-c-programming-guide/_images/gpu-devotes-more-transistors-to-data-processing.png)
+*This can also be split into multiple files easily, my Visual Studio Instance was giving me trouble on compiling.*
 
 ### Conceptual Idea
-1. Client Nodes connect to the host
-2. Each client is given a game object that enrols itself in the sincronized list of all clients (host is considered both a client and a server, this means that it will also be in the list of processors and can recive tasks like any other client). 
-3. The population bing evaluated is then passed out to inactive nodes via client-rpc calls initalzied with their id. 
-4. They evaluate and return the fitness via server-rpc call, this call adds them to the back of the inactive queue, and updates their fitness.
-5. Once Complete handing out tasks the host waits for all fitnesses to be returned to it/timeout.
-6. CHC Crossover and repeat
-
-PS: Client-rpc calls are generally broadcast to all clients, but can be specified to only go to one if the ID is added in the call
-![Diagram of Client-RPC](https://docs-multiplayer.unity3d.com/img//sequence_diagrams/RPCs/ClientRPCs_CertainClients.png?text=LightMode)
-```
-SubPopulationProcessor waitingProcessor = InputHandler.inst.inactiveProcessors.Dequeue();
-
-ClientRpcParams clientRpcParams = new ClientRpcParams
-{
-        Send = new ClientRpcSendParams
-        {
-            TargetClientIds = new ulong[]{waitingProcessor.myID.Value}
-        }
-};
-ToHostMessage temp = new(members[i].chromosome,i);
-waitingProcessor.RunProcessorClientRpc(temp,clientRpcParams);
-```
-![Diagram of Server-RPC](https://docs-multiplayer.unity3d.com/img//sequence_diagrams/RPCs/ServerRPCs_ClientHosts_CalledByClient.png?text=LightMode)
-```
-//Inside of Sub-Processor Client RPC
-ToServerMessage toServer = new(fitness,toHostMessage.indexA,1);
-ReadFitnessServerRpc(toServer);
-```
+1. Standard GA Runtime INIT+CHC Crossover Population
+2. Memory containing individuals is copied to the GPU
+3. Instead of a standard Eval (IF GPU option enum is set), a call is made to the GPU for the eval function
+4. Individuals are copied back with updated fitness
+5. Algorithm continues
 
 ### Implementation Details
-1. All structs passed through rpcs messages must be an implementation of the INetworkSerializable interface with the method:
+This is the EvalGPU Call
 ```
-public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
-{
-        serializer.SerializeValue(ref staticVarA);
-        serializer.SerializeValue(ref staticVarB);
-        serializer.SerializeValue(ref staticVarC);
-}
-    /*a. Make sure to serial sinc all variables and be very careful with nonstaticly allocated elements*/
+cudaMemcpy(members_d,members,size,cudaMemcpyHostToDevice);
+EvalGPU<<<(options.popSize*2+255)/256, 256>>>(members_d,options.popSize*2);
+cudaMemcpy(members,members_d,size,cudaMemcpyDeviceToHost);
 ```
-    
-2. Initally network varriables will have only server write permission, if you want a Trusting P2P Framework use:
+This copies the data from the members array (The array of Individuals) to the GPU. Note that size is computed above via
 ```
-[ServerRpc(RequireOwnership =false)] //For Server rpc calls
-private NetworkVariable<int> netThing = new(1/*Initalized Value*/,NetworkVariableReadPermission.Everyone,NetworkVariableWritePermission.Owner); //For NetVariables
+size_t size = options.popSize*2*sizeof(Individual);
 ```
-### Setup
-1. Zip and Send/Download Unity Build File to all clients (windows scp is very efficent for this)
-2. Boot Up all exe files, can run multiple on one client for effectively threading.
-3. Find ip4 address of computer that will be host server (ipconfig in cmd is easiest), and initalize all runtimes with that value.
-4. Select one instance as host and all others as client
-5. Select GA paramaters
-6. Run (Note that nodes will turn green after running if their respective client sucessfully processed at least 1 fitness.)
+**Note that it is very important to treat this like malloc or memcpy** as any internal pointers will not be deep copied, and an array can only be copied easily if it is statically allocated with non-pointer data (such as structs), whereas classes if contained in the array via pointers will not be copied.
+Then ```EvalGPU<<<(options.popSize*2+255)/256, 256>>>(members_d,options.popSize*2)``` is called which is a ```__global__``` function and is passed as follows ```<<<numbOfCores,numbOfThreads>>>(standardFuncArgs);```
 
-### Aditional Notes
-Multithreading currently does not work
-Sever Hosting Mode also has issues
+Execution Usually will look like this
+
+![Parallel Execution Diagram](https://docs.nvidia.com/cuda/cuda-c-programming-guide/_images/heterogeneous-programming.png)
+
+### Setup
+1. Download NVIDA CUDA Tools: [https://developer.nvidia.com/cuda-toolkit](https://developer.nvidia.com/cuda-toolkit)
+2. Instal
+3. Make sure your NVIDIA Drivers are up to date
+4. Place CHCGeneticAlgorithm.cu into visual studio, (it should integrate it into the .sln file) otherwise try VSCode and run the compile manually.
+5. Run the exe on the command line and give it whatever runtime args you want for the GA *Currently not implemented :(*
+6. Check Results in outfile 
+
+### Additional Notes
+- NSIGHT COMPUTE is very useful for seeing gpu errors and general debugging.
+- This requires an NVIDIA GPU to run.
+- ```extern std::mt19937 MyRandom;``` flips out, unsure why
+
+
